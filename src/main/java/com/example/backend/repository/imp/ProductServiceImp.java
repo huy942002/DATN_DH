@@ -5,66 +5,94 @@ import com.example.backend.dto.ReferenceDTO;
 import com.example.backend.entities.*;
 import com.example.backend.repository.irepo.IProductService;
 import com.example.backend.repository.repo.*;
-
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
-
-import java.time.LocalDateTime;
-import java.util.List;
 import java.util.Optional;
-import java.util.stream.Collectors;
+
 
 @Service
 public class ProductServiceImp implements IProductService {
+    private static final Logger logger = LoggerFactory.getLogger(ProductServiceImp.class);
+
     @Autowired
     private ProductRepository productRepository;
+    @Autowired
+    private CategoryRepository categoryRepository;
+    @Autowired
+    private FunctionRepository functionRepository;
+    @Autowired
+    private StyleRepository styleRepository;
+    @Autowired
+    private WoodTypeRepository woodTypeRepository;
+    @Autowired
+    private LocationRepository locationRepository;
+    @Autowired
+    private CraftingTechniqueRepository techniqueRepository;
+    @Autowired
+    private PriceRangeRepository priceRangeRepository;
+    @Autowired
+    private FurnitureTypeRepository furnitureTypeRepository;
 
     @Override
     public Iterable<Product> findAll() {
+        logger.info("Fetching all active products");
         return productRepository.findByIsActiveTrue();
     }
 
     @Override
     public Optional<Product> findById(Integer id) {
+        logger.info("Fetching product by ID: {}", id);
         return productRepository.findById(id);
     }
 
     @Override
     public Product save(Product product) {
-        if (product.getProductId() == null) {
-            product.setCreatedAt(LocalDateTime.now());
-        }
-        product.setUpdatedAt(LocalDateTime.now());
+        logger.info("Saving product: {}", product.getProductName());
         return productRepository.save(product);
     }
 
     @Override
     public void remove(Integer id) {
+        logger.info("Soft deleting product with ID: {}", id);
         Optional<Product> productOpt = productRepository.findById(id);
         if (productOpt.isPresent()) {
             Product product = productOpt.get();
             product.setActive(false);
-            product.setUpdatedAt(LocalDateTime.now());
             productRepository.save(product);
+        } else {
+            logger.warn("Product not found for ID: {}", id);
+            throw new RuntimeException("Product not found");
         }
     }
 
-    @Override
-    public List<ProductDTO> findAllProductDTO() {
-        List<Product> products = productRepository.findAll();
-        return products.stream().map(this::convertToDTO).collect(Collectors.toList());
+    public Page<ProductDTO> findAllProductDTO(Pageable pageable, String search, Boolean isActive) {
+        logger.info("Fetching products with pagination, search: {}, isActive: {}", search, isActive);
+        if (search != null && !search.isEmpty()) {
+            return productRepository.findByProductNameContainingIgnoreCaseAndIsActive(isActive, search, pageable)
+                    .map(this::convertToDTO);
+        }
+        return productRepository.findByIsActiveTrue(pageable).map(this::convertToDTO);
     }
 
     @Override
     public ProductDTO findByIdProductDTO(Integer id) {
+        logger.info("Fetching product DTO by ID: {}", id);
         Product product = productRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Product not found"));
+                .orElseThrow(() -> {
+                    logger.error("Product not found for ID: {}", id);
+                    return new RuntimeException("Product not found");
+                });
         return convertToDTO(product);
     }
 
     @Override
     public ProductDTO create(ProductDTO productDTO) {
+        logger.info("Creating new product: {}", productDTO.getProductName());
         Product product = new Product();
         mapDTOToEntity(productDTO, product);
         Product savedProduct = productRepository.save(product);
@@ -73,8 +101,12 @@ public class ProductServiceImp implements IProductService {
 
     @Override
     public ProductDTO update(Integer id, ProductDTO productDTO) {
+        logger.info("Updating product ID: {}", id);
         Product product = productRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Product not found"));
+                .orElseThrow(() -> {
+                    logger.error("Product not found for ID: {}", id);
+                    return new RuntimeException("Product not found");
+                });
         mapDTOToEntity(productDTO, product);
         Product updatedProduct = productRepository.save(product);
         return convertToDTO(updatedProduct);
@@ -82,10 +114,8 @@ public class ProductServiceImp implements IProductService {
 
     @Override
     public void delete(Integer id) {
-        if (!productRepository.existsById(id)) {
-            throw new RuntimeException("Product not found");
-        }
-        productRepository.deleteById(id);
+        logger.info("Soft deleting product with ID: {}", id);
+        remove(id); // Thống nhất sử dụng soft delete
     }
 
     private ProductDTO convertToDTO(Product product) {
@@ -110,53 +140,54 @@ public class ProductServiceImp implements IProductService {
         );
     }
 
-    private void mapDTOToEntity(ProductDTO dto, Product product) {
-        product.setProductName(dto.getProductName());
-        product.setDescription(dto.getDescription());
-        product.setPrice(dto.getPrice());
-        product.setWeight(dto.getWeight());
-        product.setDimensions(dto.getDimensions());
-        product.setProductStatus(dto.getProductStatus());
-        product.setActive(dto.getActive());
-        product.setImageUrl(dto.getImageUrl());
-        if (dto.getCategory() != null && dto.getCategory().getId() != null) {
-            Category category = new Category();
-            category.setCategoryId(dto.getCategory().getId());
+    private void mapDTOToEntity(ProductDTO DTO, Product product) {
+        product.setProductName(DTO.getProductName());
+        product.setDescription(DTO.getDescription());
+        product.setPrice(DTO.getPrice());
+        product.setWeight(DTO.getWeight());
+        product.setDimensions(DTO.getDimensions());
+        product.setProductStatus(DTO.getProductStatus());
+        product.setActive(DTO.getActive());
+        product.setImageUrl(DTO.getImageUrl());
+
+        if (DTO.getCategory() != null && DTO.getCategory().getId() != null) {
+            Category category = categoryRepository.findById(DTO.getCategory().getId())
+                    .orElseThrow(() -> new IllegalArgumentException("Category not found"));
             product.setCategory(category);
         }
-        if (dto.getFunction() != null && dto.getFunction().getId() != null) {
-            Functions function = new Functions();
-            function.setFunctionId(dto.getFunction().getId());
+        if (DTO.getFunction() != null && DTO.getFunction().getId() != null) {
+            Functions function = functionRepository.findById(DTO.getFunction().getId())
+                    .orElseThrow(() -> new IllegalArgumentException("Function not found"));
             product.setFunction(function);
         }
-        if (dto.getStyle() != null && dto.getStyle().getId() != null) {
-            Style style = new Style();
-            style.setStyleId(dto.getStyle().getId());
+        if (DTO.getStyle() != null && DTO.getStyle().getId() != null) {
+            Style style = styleRepository.findById(DTO.getStyle().getId())
+                    .orElseThrow(() -> new IllegalArgumentException("Style not found"));
             product.setStyle(style);
         }
-        if (dto.getWoodType() != null && dto.getWoodType().getId() != null) {
-            WoodType woodType = new WoodType();
-            woodType.setWoodTypeId(dto.getWoodType().getId());
+        if (DTO.getWoodType() != null && DTO.getWoodType().getId() != null) {
+            WoodType woodType = woodTypeRepository.findById(DTO.getWoodType().getId())
+                    .orElseThrow(() -> new IllegalArgumentException("WoodType not found"));
             product.setWoodType(woodType);
         }
-        if (dto.getLocation() != null && dto.getLocation().getId() != null) {
-            Locations location = new Locations();
-            location.setLocationId(dto.getLocation().getId());
+        if (DTO.getLocation() != null && DTO.getLocation().getId() != null) {
+            Locations location = locationRepository.findById(DTO.getLocation().getId())
+                    .orElseThrow(() -> new IllegalArgumentException("Location not found"));
             product.setLocation(location);
         }
-        if (dto.getTechnique() != null && dto.getTechnique().getId() != null) {
-            CraftingTechnique technique = new CraftingTechnique();
-            technique.setTechniqueId(dto.getTechnique().getId());
+        if (DTO.getTechnique() != null && DTO.getTechnique().getId() != null) {
+            CraftingTechnique technique = techniqueRepository.findById(DTO.getTechnique().getId())
+                    .orElseThrow(() -> new IllegalArgumentException("Technique not found"));
             product.setTechnique(technique);
         }
-        if (dto.getPriceRange() != null && dto.getPriceRange().getId() != null) {
-            PriceRange priceRange = new PriceRange();
-            priceRange.setPriceRangeId(dto.getPriceRange().getId());
+        if (DTO.getPriceRange() != null && DTO.getPriceRange().getId() != null) {
+            PriceRange priceRange = priceRangeRepository.findById(DTO.getPriceRange().getId())
+                    .orElseThrow(() -> new IllegalArgumentException("PriceRange not found"));
             product.setPriceRange(priceRange);
         }
-        if (dto.getFurnitureType() != null && dto.getFurnitureType().getId() != null) {
-            FurnitureType furnitureType = new FurnitureType();
-            furnitureType.setFurnitureTypeId(dto.getFurnitureType().getId());
+        if (DTO.getFurnitureType() != null && DTO.getFurnitureType().getId() != null) {
+            FurnitureType furnitureType = furnitureTypeRepository.findById(DTO.getFurnitureType().getId())
+                    .orElseThrow(() -> new IllegalArgumentException("FurnitureType not found"));
             product.setFurnitureType(furnitureType);
         }
     }

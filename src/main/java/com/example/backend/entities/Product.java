@@ -1,6 +1,8 @@
 package com.example.backend.entities;
 
 import jakarta.persistence.*;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -13,16 +15,19 @@ public class Product {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer productId;
 
-    @Column(nullable = false, columnDefinition = "NVARCHAR(200)")
+    @Column(nullable = false, columnDefinition = "NVARCHAR(200)", unique = true)
+    @NotBlank(message = "Product name is required")
     private String productName;
 
     @Column(columnDefinition = "NVARCHAR(500)")
     private String description;
 
     @Column(nullable = false)
+    @Min(value = 0, message = "Price must be non-negative")
     private BigDecimal price;
 
     @Column(nullable = false)
+    @Min(value = 0, message = "Weight must be non-negative")
     private BigDecimal weight;
 
     @Column(columnDefinition = "NVARCHAR(100)")
@@ -67,18 +72,29 @@ public class Product {
     private String productStatus = "Available";
 
     @Column(nullable = false)
-    private LocalDateTime createdAt = LocalDateTime.now();
+    private LocalDateTime createdAt;
 
     @Column(nullable = false)
-    private LocalDateTime updatedAt = LocalDateTime.now();
+    private LocalDateTime updatedAt;
 
-    @Column(name= "Active",nullable = false)
-    private boolean isActive = true;
+    @Column(name = "Active", nullable = false)
+    private Boolean isActive = true;
 
     @OneToMany(mappedBy = "product")
     private List<ProductColorDetail> colorDetails;
 
     public Product() {}
+
+    @PrePersist
+    protected void onCreate() {
+        createdAt = LocalDateTime.now();
+        updatedAt = LocalDateTime.now();
+    }
+
+    @PreUpdate
+    protected void onUpdate() {
+        updatedAt = LocalDateTime.now();
+    }
 
     // Getters and Setters
     public Integer getProductId() { return productId; }
@@ -112,14 +128,13 @@ public class Product {
     public FurnitureType getFurnitureType() { return furnitureType; }
     public void setFurnitureType(FurnitureType furnitureType) { this.furnitureType = furnitureType; }
     public String getProductStatus() { return productStatus; }
-    public void setProductStatus(String productStatus) { this.productStatus = productStatus; }
+    public void setProductStatus(String name) { this.productStatus = name; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
-    public boolean isActive() { return isActive; }
-    public void setActive(boolean active) { isActive = active; }
+    public Boolean isActive() { return isActive; }
+    public void setActive(Boolean active) { isActive = active; }
     public List<ProductColorDetail> getColorDetails() { return colorDetails; }
     public void setColorDetails(List<ProductColorDetail> colorDetails) { this.colorDetails = colorDetails; }
-
 }
